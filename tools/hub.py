@@ -15,7 +15,9 @@
 import os
 import sys
 import json
+import re
 import getpass
+import subprocess
 import urllib.request
 import urllib.parse
 
@@ -51,9 +53,28 @@ def call(payload=None):
     return res
 
 
+def read_clipboard():
+    """クリップボードの中身を読んで、そのあと空にする(合言葉を画面に出さないため)"""
+    ps = ["powershell", "-NoProfile", "-Command"]
+    out = subprocess.run(ps + ["[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Raw"],
+                         capture_output=True, text=True, encoding="utf-8").stdout
+    subprocess.run(ps + ["Set-Clipboard -Value ' '"], capture_output=True)
+    return (out or "").strip()
+
+
 def cmd_setup():
     url = input("ウェブアプリの URL(https://script.google.com/macros/s/.../exec): ").strip()
-    token = getpass.getpass("合言葉(入力しても画面には出ません): ").strip()
+    if not url.startswith("https://script.google.com/"):
+        sys.exit("[エラー] URL は https://script.google.com/ で始まるものを貼ってください")
+    if os.name == "nt":
+        input("合言葉をコピーしてから Enter を押してください(画面には出ません)")
+        token = read_clipboard()
+        if not re.fullmatch(r"[0-9a-f]{32}", token):
+            sys.exit("[エラー] クリップボードの中身が合言葉の形(英数字32文字)ではありません。"
+                     "合言葉だけをコピーし直して、もう一度実行してください")
+        print("合言葉を読み取りました(クリップボードは空にしました)")
+    else:
+        token = getpass.getpass("合言葉(入力しても画面には出ません): ").strip()
     os.makedirs(os.path.dirname(CONF), exist_ok=True)
     with open(CONF, "w", encoding="utf-8") as f:
         json.dump({"url": url, "token": token}, f)
