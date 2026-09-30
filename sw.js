@@ -1,6 +1,6 @@
 // 画面のファイルを端末に保存して、圏外でも開けるようにする。
 // ⚠️ 画面のファイルを直したら CACHE_VERSION を必ず上げる(上げないと古い画面のまま)
-const CACHE_VERSION = 'study-hub-v1';
+const CACHE_VERSION = 'study-hub-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

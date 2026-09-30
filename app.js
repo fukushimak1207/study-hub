@@ -262,7 +262,25 @@ document.getElementById('conf-form').addEventListener('submit', async e => {
 });
 
 // ---------- 起動 ----------
+// PC の QR コード(tools/qr_setup.py)から開いたときは、URL と合言葉を取り込んで
+// アドレス欄から消す(# 以降はサーバーに送られない)
+function importFromHash() {
+  const m = location.hash.match(/^#setup=([A-Za-z0-9_-]+)$/);
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+    const c = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    if (!/^https:\/\/script\.google\.com\//.test(c.url) || !c.token) return false;
+    lsSet(K_CONF, { url: c.url, token: c.token });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 (function start() {
+  const imported = importFromHash();
   const c = getConf();
   document.getElementById('conf-url').value = c.url || '';
   document.getElementById('conf-token').value = c.token || '';
@@ -272,7 +290,9 @@ document.getElementById('conf-form').addEventListener('submit', async e => {
     data = lsGet(K_DATA) || data;
   }
   renderAll();
-  fetchData();
+  fetchData().then(() => {
+    if (imported && data.fetched_at) banner('QR コードから設定を読み込みました。次はブラウザのメニューから「ホーム画面に追加」を選んでください');
+  });
   if ('serviceWorker' in navigator && !DEMO) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
 
