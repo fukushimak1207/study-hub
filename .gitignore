@@ -1,0 +1,5 @@
+# このリポジトリは公開(GitHub Pages)。データ・合言葉・予定の実物は置かない
+*.local.json
+seed*.json
+__pycache__/
+.claude/
