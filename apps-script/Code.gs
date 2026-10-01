@@ -181,13 +181,31 @@ function normName_(s) {
     .replace(/[\s「」『』【】()（）・,，、。.:：]/g, '').toLowerCase();
 }
 
-// 同じ会か: 日付が同じで、名前の一方がもう一方を含む。日付が無いときは名前の完全一致だけ
+// 同じ会か: 日付が同じで、名前の一方がもう一方を含むか、8文字以上の共通部分がある。
+// 日付が無いときは名前の完全一致だけ
 function sameSeminar_(a, b) {
   const na = normName_(a.name), nb = normName_(b.name);
   if (!na || !nb) return false;
   if ((a.date || '') !== (b.date || '')) return false;
   if (!a.date) return na === nb;
-  return na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0;
+  if (na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0) return true;
+  return longestCommon_(na, nb) >= 8;
+}
+
+// 2つの文字列に共通する最長の連続部分の長さ
+function longestCommon_(a, b) {
+  let best = 0;
+  const prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = 0;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = a[i - 1] === b[j - 1] ? diag + 1 : 0;
+      if (prev[j] > best) best = prev[j];
+      diag = tmp;
+    }
+  }
+  return best;
 }
 
 function list_() {
