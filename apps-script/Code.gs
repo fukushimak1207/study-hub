@@ -174,9 +174,20 @@ function now_() {
   return Utilities.formatDate(new Date(), 'Asia/Tokyo', "yyyy-MM-dd'T'HH:mm:ss");
 }
 
-// 名称の表記ゆれ(空白・記号・全角半角)を吸収して照合する
+// 名称の表記ゆれ(空白・記号・全角半角・「第◯回」)を吸収して照合する
 function normName_(s) {
-  return String(s || '').normalize('NFKC').replace(/[\s「」『』()（）・,，、。.]/g, '').toLowerCase();
+  return String(s || '').normalize('NFKC')
+    .replace(/第\s*\d+\s*回/g, '')
+    .replace(/[\s「」『』【】()（）・,，、。.:：]/g, '').toLowerCase();
+}
+
+// 同じ会か: 日付が同じで、名前の一方がもう一方を含む。日付が無いときは名前の完全一致だけ
+function sameSeminar_(a, b) {
+  const na = normName_(a.name), nb = normName_(b.name);
+  if (!na || !nb) return false;
+  if ((a.date || '') !== (b.date || '')) return false;
+  if (!a.date) return na === nb;
+  return na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0;
 }
 
 function list_() {
@@ -193,16 +204,14 @@ function list_() {
 function addSeminars_(items) {
   const sh = sheet_('seminars');
   const rows = readRows_(sh, SEMINAR_COLS);
-  const byKey = {};
-  rows.forEach(function (r) { byKey[normName_(r.name) + '|' + r.date] = r; });
 
   const added = [], filled = [];
   const t = now_();
   items.forEach(function (it) {
     if (!it.name) return;
-    const key = normName_(it.name) + '|' + (it.date || '');
-    const ex = byKey[key];
+    const ex = rows.filter(function (r) { return sameSeminar_(r, it); })[0];
     if (ex) {
+      if (!ex._row) return; // 同じ送信の中での重複(まだシートに書いていない)は捨てる
       let changed = false;
       SEMINAR_COLS.forEach(function (c, j) {
         if (['id', 'status', 'added_at', 'updated_at'].indexOf(c) >= 0) return;
@@ -225,7 +234,7 @@ function addSeminars_(items) {
     o.added_at = t;
     o.updated_at = t;
     added.push(o);
-    byKey[key] = o;
+    rows.push(o);
   });
   appendRows_(sh, SEMINAR_COLS, added);
   return { ok: true, added: added.length, filled: filled.length };
