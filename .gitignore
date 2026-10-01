@@ -4,3 +4,4 @@ seed*.json
 __pycache__/
 .claude/
 requirements.md
+SUMMARY.md
