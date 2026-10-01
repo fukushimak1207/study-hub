@@ -31,9 +31,66 @@ function setup() {
 
   if (!props.getProperty('TOKEN')) {
     props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
+    Logger.log('合言葉を新しく作りました: ' + props.getProperty('TOKEN'));
+  } else {
+    Logger.log('合言葉は前のまま(変えたいときは TOKEN を消して再実行)');
   }
-  Logger.log('合言葉: ' + props.getProperty('TOKEN'));
   Logger.log('データのシート: ' + ss.getUrl());
+
+  // 受付箱(クラウドの巡回が勉強会の JSON を置くフォルダ)
+  const inbox = inboxFolder_();
+  Logger.log('受付箱: ' + inbox.getUrl());
+
+  // 受付箱を1時間おきに取り込む(二重に作らない)
+  const has = ScriptApp.getProjectTriggers().some(function (t) {
+    return t.getHandlerFunction() === 'importInbox';
+  });
+  if (!has) ScriptApp.newTrigger('importInbox').timeBased().everyHours(1).create();
+  Logger.log('受付箱の自動取り込み: 1時間おき');
+}
+
+// ---------------------------------------------------------------------------
+// 受付箱の取り込み(1時間おきに自動実行。手で実行してもよい)
+// ---------------------------------------------------------------------------
+const INBOX_NAME = '学びハブ受付箱';
+
+function inboxFolder_() {
+  const props = PropertiesService.getScriptProperties();
+  const id = props.getProperty('INBOX_ID');
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* 消されていたら作り直す */ }
+  }
+  const it = DriveApp.getFoldersByName(INBOX_NAME);
+  const f = it.hasNext() ? it.next() : DriveApp.createFolder(INBOX_NAME);
+  props.setProperty('INBOX_ID', f.getId());
+  return f;
+}
+
+// .json のファイルを読み、勉強会として追記してゴミ箱へ。読めないものは名前に印を付けて残す
+function importInbox() {
+  const files = inboxFolder_().getFiles();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    while (files.hasNext()) {
+      const f = files.next();
+      const name = f.getName();
+      if (!/\.json$/i.test(name)) continue;
+      let items;
+      try {
+        const d = JSON.parse(f.getBlob().getDataAsString('utf-8'));
+        items = Array.isArray(d) ? d : (d.seminars || []);
+      } catch (e) {
+        f.setName('[読めない] ' + name.replace(/\.json$/i, '.txt'));
+        continue;
+      }
+      const res = addSeminars_(items);
+      Logger.log(name + ': 新規 ' + res.added + ' 件 / 補完 ' + res.filled + ' 件');
+      f.setTrashed(true);
+    }
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function ensureSheet_(ss, name, cols) {
