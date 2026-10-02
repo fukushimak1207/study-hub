@@ -81,3 +81,23 @@ button.primary{font:inherit; margin-top:6px; padding:10px; border:none; border-r
 .tabs button.on{color:var(--accent); font-weight:700; box-shadow:inset 0 3px 0 var(--accent)}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--hot); outline-offset:2px}
 [hidden]{display:none!important}
+
+/* 登録ボタンと確認画面 */
+.row-end{display:flex; align-items:center; gap:8px}
+button.mini{font:inherit; font-size:.85rem; padding:4px 12px; border-radius:8px; border:1px solid var(--accent); background:var(--surface); color:var(--accent)}
+.sheet{position:fixed; inset:0; z-index:10; background:rgba(20,16,30,.45); display:flex; align-items:flex-end; justify-content:center}
+.sheet-body{background:var(--surface); width:100%; max-width:560px; max-height:92%; overflow-y:auto; border-radius:14px 14px 0 0;
+  padding:18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display:flex; flex-direction:column; gap:6px}
+.sheet-body h2{margin:0 0 4px}
+.sheet-body label{font-size:.85rem; color:var(--muted)}
+.sheet-body input[type=text],.sheet-body input[type=date],.sheet-body input[type=time]{font:inherit; padding:8px 10px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); width:100%; min-width:0}
+.sheet-body .check{display:flex; align-items:center; gap:8px; color:var(--ink); font-size:.95rem; margin-top:6px}
+.sheet-body .check input{width:20px; height:20px}
+.grid3{display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:8px}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.grid3>div,.grid2>div{display:flex; flex-direction:column; gap:4px; min-width:0}
+.warn{color:var(--warn)}
+.sheet-actions{display:flex; gap:10px; margin-top:6px}
+.sheet-actions button{flex:1}
+button.ghost{font:inherit; padding:10px; border-radius:8px; border:1px solid var(--line); background:var(--surface); color:var(--ink)}
+button.primary:disabled{opacity:.5}

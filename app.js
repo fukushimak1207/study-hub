@@ -69,14 +69,19 @@ function seminarCard(s) {
   const opts = STATUSES.map(x => '<option' + (x === s.status ? ' selected' : '') + '>' + x + '</option>').join('');
   return '<article class="card">' +
     '<div class="chips">' + statusChip(s.status) + deadlineChip(s) +
-      (s.role && s.role !== '参加' ? '<span class="chip">' + esc(s.role) + '</span>' : '') + '</div>' +
+      (s.role && s.role !== '参加' ? '<span class="chip">' + esc(s.role) + '</span>' : '') +
+      (s.cal_id ? '<span class="chip ok">カレンダー登録済</span>' : '') +
+      (s.task_id ? '<span class="chip ok">Tasks 登録済</span>' : '') + '</div>' +
     '<div class="item-title">' + esc(s.name) + '</div>' +
     '<div class="meta"><span><b>' + esc(whenText(s)) + '</b></span>' + meta + '</div>' +
     (s.theme ? '<p class="small">' + esc(s.theme) + '</p>' : '') +
     (s.note ? '<p class="small">メモ: ' + esc(s.note) + '</p>' : '') +
     '<div class="row">' +
       (url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">案内を開く</a>' : '<span class="small">案内リンクなし</span>') +
-      '<select aria-label="状態を変える" data-id="' + esc(s.id) + '">' + opts + '</select>' +
+      '<span class="row-end">' +
+        '<button type="button" class="mini" data-reg="' + esc(s.id) + '">' + (s.cal_id || s.task_id ? '再登録' : '登録') + '</button>' +
+        '<select aria-label="状態を変える" data-id="' + esc(s.id) + '">' + opts + '</select>' +
+      '</span>' +
     '</div>' +
   '</article>';
 }
@@ -239,7 +244,84 @@ document.addEventListener('click', e => {
     return;
   }
   const f = e.target.closest('.filters button');
-  if (f) { seminarFilter = f.dataset.filter; renderSeminars(); }
+  if (f) { seminarFilter = f.dataset.filter; renderSeminars(); return; }
+  const reg = e.target.closest('[data-reg]');
+  if (reg) openRegister(reg.dataset.reg);
+});
+
+// ---------- カレンダー・Tasks への登録 ----------
+// 日付の文字(「18:00～19:30」など)から開始・終了の時刻を拾う
+function guessTimes(text) {
+  const m = String(text || '').normalize('NFKC').match(/(\d{1,2}):(\d{2})\s*[~〜\-ー－−‐]\s*(\d{1,2}):(\d{2})/);
+  if (m) return [m[1].padStart(2, '0') + ':' + m[2], m[3].padStart(2, '0') + ':' + m[4]];
+  const one = String(text || '').normalize('NFKC').match(/(\d{1,2}):(\d{2})/);
+  return one ? [one[1].padStart(2, '0') + ':' + one[2], ''] : ['', ''];
+}
+
+let regId = null;
+function openRegister(id) {
+  const s = data.seminars.find(x => x.id === id);
+  if (!s) return;
+  regId = id;
+  const [st, en] = guessTimes(s.date_text);
+  const due = s.status === '申込済' || s.status === '参加済' ? s.date : (s.deadline || s.date);
+  document.getElementById('reg-title').value = s.name || '';
+  document.getElementById('reg-date').value = isDate(s.date) ? s.date : '';
+  document.getElementById('reg-start').value = st;
+  document.getElementById('reg-end').value = en;
+  document.getElementById('reg-place').value = s.place || '';
+  document.getElementById('reg-cal').checked = !s.cal_id;
+  document.getElementById('reg-task').checked = !s.task_id;
+  document.getElementById('reg-due').value = isDate(due) ? due : '';
+  document.getElementById('reg-note').value = [s.url, s.note].filter(Boolean).join(' / ');
+  document.getElementById('reg-src').innerHTML = safeUrl(s.url)
+    ? '<a href="' + esc(safeUrl(s.url)) + '" target="_blank" rel="noopener">案内の原文を開いて日時を確かめる</a>'
+    : '案内リンクがありません。日時は手元の案内で確かめてください';
+  document.getElementById('reg-warn').textContent =
+    (s.cal_id || s.task_id ? '登録済みの項目はチェックを外してあります。' : '') +
+    (s.date_text ? ' 元の記載: ' + s.date_text : '');
+  document.getElementById('reg-msg').textContent = '';
+  document.getElementById('reg-go').disabled = false;
+  document.getElementById('reg-sheet').hidden = false;
+}
+function closeRegister() {
+  document.getElementById('reg-sheet').hidden = true;
+  regId = null;
+}
+
+document.getElementById('reg-cancel').addEventListener('click', closeRegister);
+document.getElementById('reg-sheet').addEventListener('click', e => {
+  if (e.target.id === 'reg-sheet') closeRegister();
+});
+document.getElementById('reg-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = id => document.getElementById(id).value.trim();
+  const doCal = document.getElementById('reg-cal').checked;
+  const doTask = document.getElementById('reg-task').checked;
+  const msg = document.getElementById('reg-msg');
+  if (!doCal && !doTask) { msg.textContent = 'カレンダーか Tasks の少なくとも一方にチェックを入れてください'; return; }
+  if (doCal && !isDate(v('reg-date'))) { msg.textContent = 'カレンダーに入れるには日付が必要です'; return; }
+  if (DEMO) { msg.textContent = '見本データなので登録はしません'; return; }
+  const btn = document.getElementById('reg-go');
+  btn.disabled = true;
+  msg.textContent = '登録しています…';
+  try {
+    const res = await post({
+      action: 'register', id: regId, title: v('reg-title'), date: v('reg-date'),
+      start: v('reg-start'), end: v('reg-end'), place: v('reg-place'),
+      doCal: doCal, doTask: doTask, taskDue: v('reg-due'), taskNote: v('reg-note'),
+    });
+    const s = data.seminars.find(x => x.id === regId);
+    if (s) { s.cal_id = res.cal_id; s.task_id = res.task_id; lsSet(K_DATA, data); }
+    const word = { created: '登録しました', exists: '同じ予定がすでにあったので作りませんでした', skip: '' };
+    msg.textContent = [doCal ? 'カレンダー: ' + word[res.cal] : '', doTask ? 'Tasks: ' + word[res.task] : '']
+      .filter(Boolean).join(' / ');
+    renderAll();
+    setTimeout(closeRegister, 1800);
+  } catch (err) {
+    msg.textContent = '登録できませんでした(' + err.message + ')';
+    btn.disabled = false;
+  }
 });
 
 document.addEventListener('change', e => {

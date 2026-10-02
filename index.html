@@ -47,6 +47,36 @@
   </section>
 </main>
 
+<div id="reg-sheet" class="sheet" hidden>
+  <form id="reg-form" class="sheet-body" aria-labelledby="reg-head">
+    <h2 id="reg-head">カレンダー・Tasks に登録</h2>
+    <p id="reg-src" class="small"></p>
+    <p id="reg-warn" class="small warn"></p>
+    <label for="reg-title">タイトル</label>
+    <input id="reg-title" type="text" autocomplete="off">
+    <label for="reg-date">開催日</label>
+    <input id="reg-date" type="date">
+    <div class="grid2">
+      <div><label for="reg-start">開始</label><input id="reg-start" type="time"></div>
+      <div><label for="reg-end">終了</label><input id="reg-end" type="time"></div>
+    </div>
+    <p class="small">開始を空欄にすると終日の予定になります</p>
+    <label for="reg-place">場所</label>
+    <input id="reg-place" type="text" autocomplete="off">
+    <label class="check"><input id="reg-cal" type="checkbox"> Google カレンダーに入れる</label>
+    <label class="check"><input id="reg-task" type="checkbox"> Tasks「研修会・学会」に入れる</label>
+    <div class="grid2">
+      <div><label for="reg-due">Tasks の期限</label><input id="reg-due" type="date"></div>
+      <div><label for="reg-note">Tasks のメモ</label><input id="reg-note" type="text" autocomplete="off"></div>
+    </div>
+    <p id="reg-msg" class="small" role="status"></p>
+    <div class="sheet-actions">
+      <button id="reg-cancel" type="button" class="ghost">閉じる</button>
+      <button id="reg-go" type="submit" class="primary">登録する</button>
+    </div>
+  </form>
+</div>
+
 <nav class="tabs">
   <button type="button" data-tab="home" class="on">ホーム</button>
   <button type="button" data-tab="seminars">勉強会</button>

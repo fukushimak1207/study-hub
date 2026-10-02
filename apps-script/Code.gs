@@ -4,8 +4,11 @@
 
 const SEMINAR_COLS = [
   'id', 'name', 'organizer', 'date', 'date_text', 'place', 'format', 'theme',
-  'fee', 'deadline', 'url', 'source', 'status', 'role', 'note', 'added_at', 'updated_at'
+  'fee', 'deadline', 'url', 'source', 'status', 'role', 'note', 'added_at', 'updated_at',
+  'cal_id', 'task_id'
 ];
+const TASK_LIST_NAME = '研修会・学会';
+const TZ = 'Asia/Tokyo';
 const PAPER_COLS = [
   'pmid', 'week', 'title', 'journal', 'year', 'authors', 'theme', 'summary_ja',
   'url', 'issue_url', 'added_at'
@@ -127,6 +130,7 @@ function doPost(e) {
       case 'addSeminars': return json_(addSeminars_(body.items || []));
       case 'addPapers':   return json_(addPapers_(body.items || [], body.week, body.issue_url));
       case 'setStatus':   return json_(setStatus_(body.id, body.status));
+      case 'register':    return json_(register_(body));
       default:            return json_({ ok: false, error: '不明な操作: ' + body.action });
     }
   } finally {
@@ -232,7 +236,7 @@ function addSeminars_(items) {
       if (!ex._row) return; // 同じ送信の中での重複(まだシートに書いていない)は捨てる
       let changed = false;
       SEMINAR_COLS.forEach(function (c, j) {
-        if (['id', 'status', 'added_at', 'updated_at'].indexOf(c) >= 0) return;
+        if (['id', 'status', 'added_at', 'updated_at', 'cal_id', 'task_id'].indexOf(c) >= 0) return;
         if (!ex[c] && it[c]) {
           sh.getRange(ex._row, j + 1).setValue(String(it[c]));
           ex[c] = String(it[c]);
@@ -287,4 +291,70 @@ function setStatus_(id, status) {
   sh.getRange(row._row, SEMINAR_COLS.indexOf('status') + 1).setValue(status);
   sh.getRange(row._row, SEMINAR_COLS.indexOf('updated_at') + 1).setValue(now_());
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// カレンダーと Tasks への登録(アプリの「登録」ボタン)
+// 同じ日に同じ名前の予定・タスクがあれば作らない
+// ---------------------------------------------------------------------------
+function register_(b) {
+  const sh = sheet_('seminars');
+  const row = readRows_(sh, SEMINAR_COLS).filter(function (r) { return r.id === b.id; })[0];
+  if (!row) return { ok: false, error: '見つかりません: ' + b.id };
+  const title = String(b.title || row.name).trim();
+  if (!title) return { ok: false, error: 'タイトルが空です' };
+  const res = { ok: true, cal: 'skip', task: 'skip' };
+
+  if (b.doCal) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return { ok: false, error: 'カレンダーに入れるには日付が必要です' };
+    const cal = CalendarApp.getDefaultCalendar();
+    const day = Utilities.parseDate(b.date + ' 12:00', TZ, 'yyyy-MM-dd HH:mm');
+    const same = cal.getEventsForDay(day).filter(function (e) { return e.getTitle() === title; })[0];
+    if (same) {
+      res.cal = 'exists';
+      row.cal_id = same.getId();
+    } else {
+      const desc = [row.organizer && ('主催: ' + row.organizer), row.format && ('形式: ' + row.format),
+        row.fee && ('参加費: ' + row.fee), row.url && ('案内: ' + row.url), '(学びハブから登録)']
+        .filter(String).join('\n');
+      const opt = { description: desc, location: String(b.place || row.place || '') };
+      let ev;
+      if (/^\d{1,2}:\d{2}$/.test(b.start || '')) {
+        const st = Utilities.parseDate(b.date + ' ' + b.start, TZ, 'yyyy-MM-dd HH:mm');
+        const en = /^\d{1,2}:\d{2}$/.test(b.end || '')
+          ? Utilities.parseDate(b.date + ' ' + b.end, TZ, 'yyyy-MM-dd HH:mm')
+          : new Date(st.getTime() + 60 * 60 * 1000);
+        if (en <= st) return { ok: false, error: '終了時刻が開始時刻より前です' };
+        ev = cal.createEvent(title, st, en, opt);
+      } else {
+        ev = cal.createAllDayEvent(title, day, opt);
+      }
+      res.cal = 'created';
+      row.cal_id = ev.getId();
+    }
+    sh.getRange(row._row, SEMINAR_COLS.indexOf('cal_id') + 1).setValue(row.cal_id);
+  }
+
+  if (b.doTask) {
+    const lists = (Tasks.Tasklists.list({ maxResults: 100 }).items || []);
+    const list = lists.filter(function (l) { return l.title === TASK_LIST_NAME; })[0];
+    if (!list) return Object.assign(res, { ok: false, error: 'Tasks に「' + TASK_LIST_NAME + '」リストがありません' });
+    const open = (Tasks.Tasks.list(list.id, { showCompleted: false, maxResults: 100 }).items || []);
+    const same = open.filter(function (t) { return t.title === title; })[0];
+    if (same) {
+      res.task = 'exists';
+      row.task_id = same.id;
+    } else {
+      const task = { title: title, notes: String(b.taskNote || '') };
+      if (/^\d{4}-\d{2}-\d{2}$/.test(b.taskDue || '')) task.due = b.taskDue + 'T00:00:00.000Z';
+      row.task_id = Tasks.Tasks.insert(task, list.id).id;
+      res.task = 'created';
+    }
+    sh.getRange(row._row, SEMINAR_COLS.indexOf('task_id') + 1).setValue(row.task_id);
+  }
+
+  sh.getRange(row._row, SEMINAR_COLS.indexOf('updated_at') + 1).setValue(now_());
+  res.cal_id = row.cal_id || '';
+  res.task_id = row.task_id || '';
+  return res;
 }
