@@ -309,7 +309,7 @@ function register_(b) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(b.date || '')) return { ok: false, error: 'カレンダーに入れるには日付が必要です' };
     const cal = CalendarApp.getDefaultCalendar();
     const day = Utilities.parseDate(b.date + ' 12:00', TZ, 'yyyy-MM-dd HH:mm');
-    const same = cal.getEventsForDay(day).filter(function (e) { return e.getTitle() === title; })[0];
+    const same = cal.getEventsForDay(day).filter(function (e) { return similarTitle_(e.getTitle(), title); })[0];
     if (same) {
       res.cal = 'exists';
       row.cal_id = same.getId();
@@ -340,7 +340,8 @@ function register_(b) {
     const list = lists.filter(function (l) { return l.title === TASK_LIST_NAME; })[0];
     if (!list) return Object.assign(res, { ok: false, error: 'Tasks に「' + TASK_LIST_NAME + '」リストがありません' });
     const open = (Tasks.Tasks.list(list.id, { showCompleted: false, maxResults: 100 }).items || []);
-    const same = open.filter(function (t) { return t.title === title; })[0];
+    const sameDue = function (t) { return !b.taskDue || !t.due || t.due.slice(0, 10) === b.taskDue; };
+    const same = open.filter(function (t) { return similarTitle_(t.title, title) && sameDue(t); })[0];
     if (same) {
       res.task = 'exists';
       row.task_id = same.id;
@@ -357,4 +358,12 @@ function register_(b) {
   res.cal_id = row.cal_id || '';
   res.task_id = row.task_id || '';
   return res;
+}
+
+// 予定やタスクの名前が同じ会を指しているか(「第◯回」・括弧・記号を無視し、包含か8文字以上の共通部分)
+function similarTitle_(a, b) {
+  const na = normName_(a), nb = normName_(b);
+  if (!na || !nb) return false;
+  if (na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0) return true;
+  return longestCommon_(na, nb) >= 8;
 }
