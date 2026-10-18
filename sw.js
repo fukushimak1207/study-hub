@@ -1,7 +1,7 @@
 // 画面のファイルを端末に保存して、圏外でも開けるようにする。
 // ⚠️ 画面のファイルを直したら CACHE_VERSION を必ず上げる(上げないと古い画面のまま)
-const CACHE_VERSION = 'study-hub-v5';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
+const CACHE_VERSION = 'study-hub-v6';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -17,5 +17,10 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   // データ(Apps Script)は保存しない。画面のファイルだけ保存分を先に使う
   if (url.origin !== location.origin || e.request.method !== 'GET') return;
+  // manifest は保存しない。保存分を返すと、直しても端末が古い内容(アプリの id など)を読み続けるため
+  if (url.pathname.endsWith('manifest.webmanifest')) {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
   e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request)));
 });
