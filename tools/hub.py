@@ -7,6 +7,8 @@
   python hub.py check                    … つながるか確かめる(件数だけ表示)
   python hub.py seminars <勉強会.json>   … 勉強会を追記する(同じ会は空欄だけ埋める)
   python hub.py papers <latest.json> [IssueのURL] … 論文候補を追記する(論文ウォッチャーの形式)
+  python hub.py feedback [all]           … アプリの「意見」を表示する(既定は未対応だけ)
+  python hub.py reply <ID> <対応済み|未対応> <返事> … 意見に返事を書き、状態を変える
 
 設定ファイル: ~/.config/study-hub/config.json(GitHub には上げない場所)
 環境変数 STUDYHUB_URL / STUDYHUB_TOKEN があればそちらを優先する(GitHub Actions 用)。
@@ -117,6 +119,28 @@ def cmd_papers(path, issue_url=""):
     print("論文: 新規 %d 件(%s 週)" % (res["added"], d["date"]))
 
 
+def cmd_feedback(show_all=False):
+    items = call().get("feedback") or []
+    if not show_all:
+        items = [f for f in items if f.get("status") != "対応済み"]
+    if not items:
+        print("未対応の意見はありません" if not show_all else "意見はありません")
+        return
+    for f in items:
+        print("―" * 20)
+        print("[%s] %s / %s / %s" % (f["id"], f["kind"], f["status"], f["created_at"]))
+        print("画面: " + (f.get("label") or f.get("tab") or ""))
+        print("状態: " + (f.get("context") or ""))
+        print(f["text"])
+        if f.get("reply"):
+            print("返事: " + f["reply"])
+
+
+def cmd_reply(fid, status, reply):
+    call({"action": "replyFeedback", "id": fid, "status": status, "reply": reply})
+    print("返事を書きました: %s → %s" % (fid, status))
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
@@ -127,6 +151,10 @@ def main():
         cmd_check()
     elif mode == "seminars" and len(sys.argv) >= 3:
         cmd_seminars(sys.argv[2])
+    elif mode == "feedback":
+        cmd_feedback(len(sys.argv) >= 3 and sys.argv[2] == "all")
+    elif mode == "reply" and len(sys.argv) >= 5:
+        cmd_reply(sys.argv[2], sys.argv[3], " ".join(sys.argv[4:]))
     elif mode == "papers" and len(sys.argv) >= 3:
         cmd_papers(sys.argv[2], sys.argv[3] if len(sys.argv) >= 4 else "")
     else:

@@ -14,6 +14,9 @@ const PAPER_COLS = [
   'url', 'issue_url', 'added_at'
 ];
 const STATUSES = ['新着', '検討中', '申込済', '参加済', '見送り'];
+const FEEDBACK_COLS = ['id', 'kind', 'text', 'created_at', 'tab', 'label', 'context', 'status', 'reply', 'replied_at'];
+const FEEDBACK_KINDS = ['不具合', '要望', 'その他'];
+const FEEDBACK_STATUSES = ['未対応', '対応済み'];
 const PAPER_WEEKS_TO_SEND = 8;
 
 // ---------------------------------------------------------------------------
@@ -131,6 +134,8 @@ function doPost(e) {
       case 'addPapers':   return json_(addPapers_(body.items || [], body.week, body.issue_url));
       case 'setStatus':   return json_(setStatus_(body.id, body.status));
       case 'register':    return json_(register_(body));
+      case 'addFeedback': return json_(addFeedback_(body));
+      case 'replyFeedback': return json_(replyFeedback_(body.id, body.status, body.reply));
       default:            return json_({ ok: false, error: '不明な操作: ' + body.action });
     }
   } finally {
@@ -219,7 +224,9 @@ function list_() {
     .sort().reverse().slice(0, PAPER_WEEKS_TO_SEND);
   papers = papers.filter(function (p) { return weeks.indexOf(p.week) >= 0; });
   [seminars, papers].forEach(function (a) { a.forEach(function (o) { delete o._row; }); });
-  return { ok: true, seminars: seminars, papers: papers, server_time: now_() };
+  const feedback = readRows_(feedbackSheet_(), FEEDBACK_COLS).reverse().slice(0, 100);
+  feedback.forEach(function (o) { delete o._row; });
+  return { ok: true, seminars: seminars, papers: papers, feedback: feedback, server_time: now_() };
 }
 
 // 同じ会(名称+日付)が既にあれば、空欄だけ埋める。状態は上書きしない。
@@ -366,4 +373,44 @@ function similarTitle_(a, b) {
   if (!na || !nb) return false;
   if (na.indexOf(nb) >= 0 || nb.indexOf(na) >= 0) return true;
   return longestCommon_(na, nb) >= 8;
+}
+
+// ---------------------------------------------------------------------------
+// 意見(フィードバック)。アプリから書き、Claude が PC の hub.py で読んで返事を書く
+// ---------------------------------------------------------------------------
+function feedbackSheet_() {
+  const ssId = PropertiesService.getScriptProperties().getProperty('SS_ID');
+  const ss = SpreadsheetApp.openById(ssId);
+  let sh = ss.getSheetByName('feedback');
+  if (!sh) ensureSheet_(ss, 'feedback', FEEDBACK_COLS);
+  return ss.getSheetByName('feedback');
+}
+
+function addFeedback_(b) {
+  const text = String(b.text || '').trim();
+  if (!text) return { ok: false, error: '内容が空です' };
+  if (text.length > 2000) return { ok: false, error: '内容が長すぎます(2000字まで)' };
+  const o = {
+    id: Utilities.getUuid().slice(0, 8),
+    kind: FEEDBACK_KINDS.indexOf(b.kind) >= 0 ? b.kind : 'その他',
+    text: text,
+    created_at: now_(),
+    tab: String(b.tab || '').slice(0, 50),
+    label: String(b.label || '').slice(0, 200),
+    context: JSON.stringify(b.context || {}).slice(0, 2000),
+    status: '未対応', reply: '', replied_at: ''
+  };
+  appendRows_(feedbackSheet_(), FEEDBACK_COLS, [o]);
+  return { ok: true, item: o };
+}
+
+function replyFeedback_(id, status, reply) {
+  if (FEEDBACK_STATUSES.indexOf(status) < 0) return { ok: false, error: '不明な状態: ' + status };
+  const sh = feedbackSheet_();
+  const row = readRows_(sh, FEEDBACK_COLS).filter(function (r) { return r.id === id; })[0];
+  if (!row) return { ok: false, error: '見つかりません: ' + id };
+  sh.getRange(row._row, FEEDBACK_COLS.indexOf('status') + 1).setValue(status);
+  sh.getRange(row._row, FEEDBACK_COLS.indexOf('reply') + 1).setValue(String(reply || ''));
+  sh.getRange(row._row, FEEDBACK_COLS.indexOf('replied_at') + 1).setValue(now_());
+  return { ok: true };
 }

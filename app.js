@@ -6,8 +6,11 @@ const K_CONF = 'hub.conf';
 const K_DATA = 'hub.data';
 const DEMO = new URLSearchParams(location.search).has('demo');
 
-let data = { seminars: [], papers: [], fetched_at: '' };
+let data = { seminars: [], papers: [], feedback: [], fetched_at: '' };
 let seminarFilter = '予定';
+let currentTab = 'home';
+// 画面の版。sw.js の CACHE_VERSION と合わせる(意見に添えて「古い画面のまま」を見分ける)
+const APP_VERSION = 'v7';
 
 // ---------- 保存(端末内) ----------
 function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -188,7 +191,7 @@ async function fetchData() {
     const r = await fetch(c.url + '?token=' + encodeURIComponent(c.token), { cache: 'no-store' });
     const res = await r.json();
     if (!res.ok) throw new Error(res.error || '取得に失敗しました');
-    data = { seminars: res.seminars, papers: res.papers, fetched_at: new Date().toLocaleString('ja-JP') };
+    data = { seminars: res.seminars, papers: res.papers, feedback: res.feedback || [], fetched_at: new Date().toLocaleString('ja-JP') };
     lsSet(K_DATA, data);
     banner('');
     renderAll();
@@ -228,6 +231,7 @@ async function changeStatus(id, status) {
 
 // ---------- 操作 ----------
 function showTab(name) {
+  currentTab = name;
   document.querySelectorAll('.tab').forEach(t => { t.hidden = t.id !== 'tab-' + name; });
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
   window.scrollTo(0, 0);
@@ -243,7 +247,7 @@ document.addEventListener('click', e => {
     showTab(go.dataset.go);
     return;
   }
-  const f = e.target.closest('.filters button');
+  const f = e.target.closest('#tab-seminars .filters button');
   if (f) { seminarFilter = f.dataset.filter; renderSeminars(); return; }
   const reg = e.target.closest('[data-reg]');
   if (reg) openRegister(reg.dataset.reg);
@@ -283,10 +287,12 @@ function openRegister(id) {
   document.getElementById('reg-msg').textContent = '';
   document.getElementById('reg-go').disabled = false;
   document.getElementById('reg-sheet').hidden = false;
+  lockScroll();
 }
 function closeRegister() {
   document.getElementById('reg-sheet').hidden = true;
   regId = null;
+  lockScroll();
 }
 
 document.getElementById('reg-cancel').addEventListener('click', closeRegister);
@@ -389,8 +395,109 @@ function demoData() {
       { id: 'd3', name: '見本: 精度管理セミナー', organizer: '見本学会', date: add(6), date_text: '', place: '', format: 'Zoom', fee: '無料', deadline: '', url: '', status: '申込済', role: '参加', theme: '' },
       { id: 'd4', name: '見本: 同定法の研修', organizer: '見本技師会', date: '', date_text: '11月予定(時間未発表)', place: '神奈川', format: '現地', fee: '', deadline: '', url: '', status: '申込済', role: '実務委員', theme: '' },
     ],
+    feedback: [
+      { id: 'f1', kind: '要望', text: '見本: 論文の要約をもう少し短くしてほしい', created_at: '2026-10-20T21:10:00', tab: '論文', label: '論文の画面・10/17 収集の週', status: '対応済み', reply: '見本: 要約を2行までにしました' },
+    ],
     papers: [
       { pmid: '0', week: add(-3), title: '見本: Rapid detection of carbapenemase producers from positive blood cultures', journal: 'J Clin Microbiol', year: '2026', authors: 'Sample A et al.', theme: '耐性菌', summary_ja: '見本の要約です。陽性血液培養から直接カルバペネマーゼを検出する方法を評価した。', url: 'https://pubmed.ncbi.nlm.nih.gov/', issue_url: '' },
     ],
   };
 }
+
+
+// ---------- 意見(フィードバック) ----------
+const TAB_NAMES = { home: 'ホーム', seminars: '勉強会', papers: '論文', settings: '設定' };
+let fbKind = '要望';
+
+// 今いる画面と、その画面で意味のある状態を集める
+function feedbackContext() {
+  const ctx = { tab: TAB_NAMES[currentTab] || currentTab, version: APP_VERSION, fetched_at: data.fetched_at || '' };
+  let label = ctx.tab + 'の画面';
+  if (currentTab === 'seminars') { ctx.filter = seminarFilter; label += '・絞り込み:' + seminarFilter; }
+  if (currentTab === 'papers') {
+    const w = weeks()[0];
+    if (w) { ctx.week = w; label += '・' + fmtDate(w) + ' 収集の週'; }
+  }
+  if (regId) {
+    const s = data.seminars.find(x => x.id === regId);
+    ctx.tab = '登録画面'; ctx.seminar_id = regId; ctx.seminar = s ? s.name : '';
+    label = '登録画面・' + (s ? s.name : '');
+  }
+  const d = new Date();
+  ctx.label = label + '(' + (d.getMonth() + 1) + '月' + d.getDate() + '日)';
+  return ctx;
+}
+
+function renderFeedbackList() {
+  const list = (data.feedback || []).slice().sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const el = document.getElementById('fb-list');
+  if (!list.length) { el.innerHTML = '<p class="empty">まだ意見はありません</p>'; return; }
+  el.innerHTML = list.map(f => {
+    const done = f.status === '対応済み';
+    return '<li class="fb-item">' +
+      '<div class="chips"><span class="chip' + (f.kind === '不具合' ? ' hot' : '') + '">' + esc(f.kind) + '</span>' +
+      '<span class="chip' + (done ? ' ok' : ' warn') + '">' + esc(f.status || '未対応') + '</span>' +
+      '<span class="small">' + esc(String(f.created_at || '').slice(0, 10)) + '</span></div>' +
+      '<p class="fb-text">' + esc(f.text) + '</p>' +
+      '<p class="small">送った画面: ' + esc(f.label || f.tab || '') + '</p>' +
+      (f.reply ? '<p class="fb-reply">返事: ' + esc(f.reply) + '</p>' : '') +
+    '</li>';
+  }).join('');
+}
+
+function lockScroll() {
+  const open = !document.getElementById('fb-sheet').hidden || !document.getElementById('reg-sheet').hidden;
+  document.body.classList.toggle('no-scroll', open);
+}
+
+function openFeedback() {
+  const ctx = feedbackContext();
+  document.getElementById('fb-ctx').textContent = '送り先の情報として「' + ctx.label + '」も一緒に保存します';
+  document.getElementById('fb-msg').textContent = '';
+  document.getElementById('fb-sheet').hidden = false;
+  renderFeedbackList();
+  lockScroll();
+}
+function closeFeedback() {
+  document.getElementById('fb-sheet').hidden = true;
+  lockScroll();
+}
+
+document.getElementById('fb-open').addEventListener('click', openFeedback);
+document.getElementById('fb-close').addEventListener('click', closeFeedback);
+document.getElementById('fb-sheet').addEventListener('click', e => { if (e.target.id === 'fb-sheet') closeFeedback(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!document.getElementById('fb-sheet').hidden) closeFeedback();
+  else if (!document.getElementById('reg-sheet').hidden) { closeRegister(); lockScroll(); }
+});
+document.getElementById('fb-kinds').addEventListener('click', e => {
+  const b = e.target.closest('button[data-kind]');
+  if (!b) return;
+  fbKind = b.dataset.kind;
+  document.querySelectorAll('#fb-kinds button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+});
+document.getElementById('fb-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const ta = document.getElementById('fb-text');
+  const msg = document.getElementById('fb-msg');
+  const text = ta.value.trim();
+  if (!text) { msg.textContent = '内容を書いてください'; return; }
+  const ctx = feedbackContext();
+  if (DEMO) { msg.textContent = '見本データなので送りません'; return; }
+  const btn = document.getElementById('fb-send');
+  btn.disabled = true;
+  msg.textContent = '送っています…';
+  try {
+    const res = await post({ action: 'addFeedback', kind: fbKind, text: text, tab: ctx.tab, label: ctx.label, context: ctx });
+    data.feedback = [res.item].concat(data.feedback || []);
+    lsSet(K_DATA, data);
+    ta.value = '';
+    msg.textContent = '送りました。チャットで『フィードバック見て』と送ると対応します';
+    renderFeedbackList();
+  } catch (err) {
+    msg.textContent = '送れませんでした。通信を確かめてもう一度押してください';
+  } finally {
+    btn.disabled = false;
+  }
+});

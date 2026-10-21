@@ -13,7 +13,10 @@
 <body>
 <header class="top">
   <h1>学びハブ</h1>
-  <button id="reload" class="icon-btn" type="button" aria-label="最新にする">↻</button>
+  <span class="top-actions">
+    <button id="fb-open" class="text-btn" type="button">意見</button>
+    <button id="reload" class="icon-btn" type="button" aria-label="最新にする">↻</button>
+  </span>
 </header>
 
 <div id="banner" class="banner" hidden></div>
@@ -74,6 +77,25 @@
       <button id="reg-cancel" type="button" class="ghost">閉じる</button>
       <button id="reg-go" type="submit" class="primary">登録する</button>
     </div>
+  </form>
+</div>
+
+<div id="fb-sheet" class="sheet fb" hidden>
+  <form id="fb-form" class="sheet-body" aria-labelledby="fb-head">
+    <div class="row"><h2 id="fb-head">意見を送る</h2><button id="fb-close" type="button" class="ghost small-btn">閉じる</button></div>
+    <p id="fb-ctx" class="small"></p>
+    <div id="fb-kinds" class="filters" role="group" aria-label="種類">
+      <button type="button" data-kind="不具合" aria-pressed="false">不具合</button>
+      <button type="button" data-kind="要望" aria-pressed="true">要望</button>
+      <button type="button" data-kind="その他" aria-pressed="false">その他</button>
+    </div>
+    <label for="fb-text">内容</label>
+    <textarea id="fb-text" rows="4" maxlength="2000" placeholder="気づいたこと・困ったこと・欲しい機能"></textarea>
+    <p class="small">患者情報は書かないでください</p>
+    <button id="fb-send" type="submit" class="primary">送る</button>
+    <p id="fb-msg" class="small" role="status"></p>
+    <h3>これまでの意見</h3>
+    <ul id="fb-list" class="fb-list"></ul>
   </form>
 </div>
 
